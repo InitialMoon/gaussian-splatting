@@ -80,7 +80,7 @@ class OptimizationParams(ParamGroup):
         self.scaling_lr = 0.005
         self.rotation_lr = 0.001
         self.percent_dense = 0.01
-        self.lambda_dssim = 0.2
+        self.lambda_dssim = 0.2 # 平衡 L1 损失和结构相似性指数（SSIM）损失
         self.densification_interval = 100
         self.opacity_reset_interval = 3000
         self.densify_from_iter = 500

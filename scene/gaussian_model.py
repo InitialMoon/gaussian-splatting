@@ -24,6 +24,8 @@ from utils.general_utils import strip_symmetric, build_scaling_rotation
 class GaussianModel:
 
     def setup_functions(self):
+        # 设置模型用到的函数
+        # 一些函数是现有库提供好的，所以说是设置
         def build_covariance_from_scaling_rotation(scaling, scaling_modifier, rotation):
             L = build_scaling_rotation(scaling_modifier * scaling, rotation)
             actual_covariance = L @ L.transpose(1, 2)
@@ -165,10 +167,12 @@ class GaussianModel:
                                                     lr_final=training_args.position_lr_final*self.spatial_lr_scale,
                                                     lr_delay_mult=training_args.position_lr_delay_mult,
                                                     max_steps=training_args.position_lr_max_steps)
+                                                    # 学习率从大到小按照指数下降率下降
 
     def update_learning_rate(self, iteration):
         ''' Learning rate scheduling per step '''
-        for param_group in self.optimizer.param_groups:
+        ''' 根据xyz的值计算步长？'''
+        for param_group in self.optimizer.param_groups: # 这里自己手写了查找过程，应该是性能优化
             if param_group["name"] == "xyz":
                 lr = self.xyz_scheduler_args(iteration)
                 param_group['lr'] = lr

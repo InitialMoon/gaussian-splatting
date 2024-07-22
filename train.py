@@ -38,9 +38,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         (model_params, first_iter) = torch.load(checkpoint)
         gaussians.restore(model_params, opt)
 
-    bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
+    bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0] # 设置背景颜色的rgb
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
 
+    # 两个在GPU上的计时器
     iter_start = torch.cuda.Event(enable_timing = True)
     iter_end = torch.cuda.Event(enable_timing = True)
 
@@ -49,9 +50,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
     for iteration in range(first_iter, opt.iterations + 1):        
-        if network_gui.conn == None:
+        if network_gui.conn == None: # 连接一直会尝试
             network_gui.try_connect()
-        while network_gui.conn != None:
+        while network_gui.conn != None: # 连接错误时的处理
             try:
                 net_image_bytes = None
                 custom_cam, do_training, pipe.convert_SHs_python, pipe.compute_cov3D_python, keep_alive, scaling_modifer = network_gui.receive()
@@ -66,29 +67,36 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         iter_start.record()
 
-        gaussians.update_learning_rate(iteration)
+        gaussians.update_learning_rate(iteration) # 学习率从大到小按照指数下降率下降，是动态变化的
 
         # Every 1000 its we increase the levels of SH up to a maximum degree
+        # 每1000次迭代就增加球协函数的N，让场景增加更多细节,但是不会大过设置的最大球谐函数参数self.max_sh_degree
         if iteration % 1000 == 0:
             gaussians.oneupSHdegree()
 
         # Pick a random Camera
+        # 如果视角栈中没有预设相机位姿，就随机生成，否则可以使用预设的相机位姿，但是代码中没有这部分参数输入的功能
         if not viewpoint_stack:
             viewpoint_stack = scene.getTrainCameras().copy()
         viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack)-1))
 
         # Render
+        # debug参数检测，从第几次迭代开始debug，如果一开始是0，就永远不会检测到，就是正常执行
         if (iteration - 1) == debug_from:
             pipe.debug = True
 
+        # 设置背景颜色：随机/黑/白
         bg = torch.rand((3), device="cuda") if opt.random_background else background
 
+        # 根据相机信息、高斯模型、渲染管线、背景颜色渲染图片
+        # 会剔除在视角之外的高斯点和半径小于等于0的点
         render_pkg = render(viewpoint_cam, gaussians, pipe, bg)
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
         # Loss
         gt_image = viewpoint_cam.original_image.cuda()
         Ll1 = l1_loss(image, gt_image)
+        # 平衡 L1 损失和结构相似性指数（SSIM）损失
         loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
         loss.backward()
 
@@ -195,7 +203,7 @@ if __name__ == "__main__":
     parser = ArgumentParser(description="Training script parameters")
     lp = ModelParams(parser)
     op = OptimizationParams(parser)
-    pp = PipelineParams(parser)
+    pp = PipelineParams(parser) # 控制管线中计算SH和3D协方差是使用pytorch提供的还是作者提供的
     parser.add_argument('--ip', type=str, default="127.0.0.1")
     parser.add_argument('--port', type=int, default=6009)
     parser.add_argument('--debug_from', type=int, default=-1)
